@@ -15,20 +15,6 @@ const HomePage = () => {
         }}
       />
 
-      {/* Header with Logos */}
-      <header className="relative z-10 p-4 flex justify-between items-center">
-        <img 
-          src="/lovable-uploads/2385caa3-4f64-473c-b531-25074b6bdbde.png" 
-          alt="College Logo" 
-          className="h-16 object-contain"
-        />
-        <img 
-          src="/lovable-uploads/2385caa3-4f64-473c-b531-25074b6bdbde.png" 
-          alt="Department Logo" 
-          className="h-16 object-contain"
-        />
-      </header>
-
       {/* Main Content */}
       <main className="relative z-10 flex flex-col items-center justify-center min-h-[80vh] text-center px-4">
         <div className="max-w-4xl mx-auto">
