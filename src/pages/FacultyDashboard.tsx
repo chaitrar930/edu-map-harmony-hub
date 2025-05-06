@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { 
@@ -15,6 +14,7 @@ import BatchList from "@/components/faculty/BatchList";
 import BatchDetails from "@/components/faculty/BatchDetails";
 import MarkEntry from "@/components/faculty/MarkEntry";
 import CoPOMapping from "@/components/faculty/CoPOMapping";
+import SubmitMarks from "@/components/faculty/SubmitMarks"; // Added import
 import {
   Sidebar,
   SidebarContent,
@@ -116,6 +116,18 @@ const FacultyDashboard = () => {
                 View Mappings <ChevronRight className="h-4 w-4" />
               </button>
             </div>
+            
+            {/* Add Submit Marks option */}
+            <div className="bg-white p-6 rounded-lg shadow">
+              <h3 className="text-lg font-medium mb-2">Submit Marks</h3>
+              <p className="text-gray-600 mb-4">Submit the final marks for your students</p>
+              <button 
+                onClick={() => setActiveTab("submitMarks")}
+                className="text-blue-600 flex items-center"
+              >
+                Submit Marks <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -145,6 +157,8 @@ const FacultyDashboard = () => {
       }
     } else if (activeTab === "copo") {
       return <CoPOMapping />;
+    } else if (activeTab === "submitMarks") {
+      return <SubmitMarks />;
     }
     
     return null;
@@ -187,6 +201,16 @@ const FacultyDashboard = () => {
                 >
                   <BarChart2 className="h-5 w-5" />
                   <span>CO-PO Mapping</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {/* Add Submit Marks menu item */}
+              <SidebarMenuItem>
+                <SidebarMenuButton 
+                  onClick={() => setActiveTab("submitMarks")}
+                  isActive={activeTab === "submitMarks"}
+                >
+                  <Upload className="h-5 w-5" />
+                  <span>Submit Marks</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>
