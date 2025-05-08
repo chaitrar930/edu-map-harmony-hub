@@ -45,7 +45,9 @@ const FacultyDashboard = () => {
 
   const handleBatchSelect = (batch) => {
     setSelectedBatch(batch);
-    setActiveTab("batchDetails");
+    // Directly show mark entry when batch is selected
+    setShowMarkEntry(true);
+    setShowCoPOMapping(false);
   };
 
   const handleMarkEntryClick = () => {

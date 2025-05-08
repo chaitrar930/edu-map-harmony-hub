@@ -39,6 +39,16 @@ const BatchList = ({ onSelectBatch }: BatchListProps) => {
     setBatches(storedBatches);
   }, []);
 
+  // Handle batch selection with direct mark entry view
+  const handleSelectBatch = (batch: Batch) => {
+    // Store the selected batch for the mark entry component
+    localStorage.setItem("selectedSubject", "cs201"); // Default subject
+    localStorage.setItem("selectedEvaluation", "CIE-1"); // Default evaluation
+    
+    // Call the parent handler to show mark entry directly
+    onSelectBatch(batch);
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -71,7 +81,7 @@ const BatchList = ({ onSelectBatch }: BatchListProps) => {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onSelectBatch(batch)}
+                      onClick={() => handleSelectBatch(batch)}
                     >
                       <ExternalLink className="h-4 w-4 mr-1" />
                       Open

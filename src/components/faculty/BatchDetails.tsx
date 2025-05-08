@@ -50,7 +50,7 @@ const subjects = [
 ];
 
 // Sample student data
-const sampleStudents: Student[] = Array(15)
+const sampleStudents: Student[] = Array(70)
   .fill(null)
   .map((_, i) => ({
     id: (i + 1).toString(),
@@ -70,8 +70,18 @@ const BatchDetails = ({
 
   useEffect(() => {
     // In a real app, you would fetch students for this batch from a backend
-    // Here we'll just use sample data
-    setStudents(sampleStudents);
+    // Here we'll filter to include only up to 1DS23AI070
+    const filteredStudents = sampleStudents.filter(s => {
+      const usnNumber = parseInt(s.usn.substring(6), 10);
+      return usnNumber <= 70;
+    });
+    setStudents(filteredStudents);
+    
+    // Get stored subject and evaluation if present
+    const storedSubject = localStorage.getItem("selectedSubject");
+    const storedEval = localStorage.getItem("selectedEvaluation");
+    if (storedSubject) setSelectedSubject(storedSubject);
+    if (storedEval) setSelectedEvaluation(storedEval);
   }, [batch.id]);
 
   const handleMarkEntryClick = () => {
@@ -195,31 +205,29 @@ const BatchDetails = ({
         </CardContent>
       </Card>
 
-      {selectedSubject && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Students</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>USN</TableHead>
-                  <TableHead>Name</TableHead>
+      <Card>
+        <CardHeader>
+          <CardTitle>Students</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>USN</TableHead>
+                <TableHead>Name</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {students.map((student) => (
+                <TableRow key={student.id}>
+                  <TableCell className="font-medium">{student.usn}</TableCell>
+                  <TableCell>{student.name}</TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {students.map((student) => (
-                  <TableRow key={student.id}>
-                    <TableCell className="font-medium">{student.usn}</TableCell>
-                    <TableCell>{student.name}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 };
