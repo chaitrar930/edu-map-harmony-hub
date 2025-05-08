@@ -1,174 +1,228 @@
+
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
-from flask_cors import CORS
-from datetime import datetime
+import sqlite3
 import os
+import pandas as pd
+from datetime import datetime
+from flask_cors import CORS
 
-# Initialize Flask app
 app = Flask(__name__)
-CORS(app, resources={
-    r"/*": {
-        "origins": ["http://localhost:8080", "http://127.0.0.1:8080"],
-        "methods": ["GET", "POST"],
-        "allow_headers": ["Content-Type"]
-    }
-})
+CORS(app)
 
-# Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(os.path.dirname(__file__), 'instance', 'copomapping.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-db = SQLAlchemy(app)
+# Database setup
+DATABASE = 'copomapping.db'
 
-# Database Models
-class Batch(db.Model):
-    __tablename__ = 'batch'
-    id = db.Column(db.String(50), primary_key=True)
-    batch_id = db.Column(db.String(20), nullable=False)
-    year = db.Column(db.String(20), nullable=False)
-    section = db.Column(db.String(5), nullable=False)
-    semester = db.Column(db.String(5), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    submissions = db.relationship('MarkSubmission', backref='batch', lazy=True)
+def get_db_connection():
+    conn = sqlite3.connect(DATABASE)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-class MarkSubmission(db.Model):
-    __tablename__ = 'mark_submission'
-    id = db.Column(db.Integer, primary_key=True)
-    subject_code = db.Column(db.String(20), nullable=False)
-    subject_name = db.Column(db.String(100), nullable=False)
-    evaluation_type = db.Column(db.String(20), nullable=False)
-    question_paper = db.Column(db.String(100))
-    submission_date = db.Column(db.DateTime, default=datetime.utcnow)
-    batch_id = db.Column(db.String(50), db.ForeignKey('batch.id'), nullable=False)
-    student_marks = db.relationship('StudentMark', backref='submission', lazy=True)
+def init_db():
+    conn = get_db_connection()
+    
+    # Create tables if they don't exist
+    conn.execute('''
+    CREATE TABLE IF NOT EXISTS submissions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        subject_code TEXT NOT NULL,
+        subject_name TEXT NOT NULL,
+        evaluation_type TEXT NOT NULL,
+        batch_id TEXT NOT NULL,
+        section TEXT NOT NULL,
+        semester TEXT NOT NULL,
+        academic_year TEXT NOT NULL,
+        submitted_at TIMESTAMP NOT NULL
+    )
+    ''')
+    
+    conn.execute('''
+    CREATE TABLE IF NOT EXISTS student_marks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER NOT NULL,
+        usn TEXT NOT NULL,
+        question_id TEXT NOT NULL,
+        marks INTEGER NOT NULL,
+        FOREIGN KEY (submission_id) REFERENCES submissions (id)
+    )
+    ''')
+    
+    conn.execute('''
+    CREATE TABLE IF NOT EXISTS question_cos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        submission_id INTEGER NOT NULL,
+        question_id TEXT NOT NULL,
+        course_outcomes TEXT NOT NULL,
+        FOREIGN KEY (submission_id) REFERENCES submissions (id)
+    )
+    ''')
+    
+    conn.commit()
+    conn.close()
 
-class StudentMark(db.Model):
-    __tablename__ = 'student_mark'
-    id = db.Column(db.Integer, primary_key=True)
-    usn = db.Column(db.String(20), nullable=False)
-    marks_data = db.Column(db.JSON, nullable=False)
-    submission_id = db.Column(db.Integer, db.ForeignKey('mark_submission.id'), nullable=False)
-
-# Initialize Database
-with app.app_context():
-    db.create_all()
+# Initialize database when app starts
+init_db()
 
 @app.route('/')
 def home():
-    return "EduMap Harmony Hub Backend is running!"
+    return jsonify({"status": "ok", "message": "CO-PO Mapping API is running"})
 
-@app.route('/test-db')
-def test_db():
-    try:
-        db.session.execute("SELECT 1")
-        return jsonify({"success": True, "message": "Database connected"})
-    except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+@app.route('/submissions')
+def get_submissions():
+    conn = get_db_connection()
+    submissions = conn.execute('SELECT * FROM submissions ORDER BY submitted_at DESC').fetchall()
+    conn.close()
+    
+    # Convert to list of dicts
+    result = []
+    for row in submissions:
+        item = {}
+        for idx, col in enumerate(row.keys()):
+            item[col] = row[idx]
+        result.append(item)
+    
+    return jsonify(result)
 
 @app.route('/submit-marks', methods=['POST'])
 def submit_marks():
     try:
-        data = request.get_json()
-        app.logger.info("Received submission data: %s", data)
-
+        data = request.json
+        
+        # Extract main data
+        subject_code = data.get('subjectCode')
+        subject_name = data.get('subjectName')
+        evaluation_type = data.get('evaluationType')
+        batch = data.get('batch')
+        students = data.get('students', [])
+        course_outcomes = data.get('courseOutcomes', {})
+        
         # Validate required fields
-        required_fields = ['subjectCode', 'subjectName', 'evaluationType', 'batch', 'students']
-        if not all(field in data for field in required_fields):
-            return jsonify({'success': False, 'message': f'Missing required fields: {required_fields}'}), 400
-
-        # Validate batch data
-        batch_data = data['batch']
-        required_batch_fields = ['id', 'batchId', 'year', 'section', 'semester']
-        if not all(field in batch_data for field in required_batch_fields):
-            return jsonify({'success': False, 'message': f'Invalid batch data. Required: {required_batch_fields}'}), 400
-
-        # Process batch
-        batch = Batch.query.get(batch_data['id'])
-        if not batch:
-            batch = Batch(
-                id=batch_data['id'],
-                batch_id=batch_data['batchId'],
-                year=batch_data['year'],
-                section=batch_data['section'],
-                semester=batch_data['semester']
-            )
-            db.session.add(batch)
-            db.session.flush()
-
-        # Create submission
-        submission = MarkSubmission(
-            subject_code=data['subjectCode'],
-            subject_name=data['subjectName'],
-            evaluation_type=data['evaluationType'],
-            question_paper=data.get('questionPaper', ''),
-            batch_id=batch.id
-        )
-        db.session.add(submission)
-        db.session.flush()
-
-        # Process student marks
-        valid_students = []
-        for student in data['students']:
-            if not all(k in student for k in ['usn', 'marks']):
-                continue
-            if not isinstance(student['marks'], dict):
-                continue
-            valid_students.append(StudentMark(
-                usn=student['usn'],
-                marks_data=student['marks'],
-                submission_id=submission.id
-            ))
-
-        if not valid_students:
-            return jsonify({'success': False, 'message': 'No valid student records provided'}), 400
-
-        db.session.add_all(valid_students)
-        db.session.commit()
-
+        if not all([subject_code, subject_name, evaluation_type, batch]):
+            return jsonify({"status": "error", "message": "Missing required fields"}), 400
+        
+        # Insert into database
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Insert submission
+        cursor.execute('''
+        INSERT INTO submissions (subject_code, subject_name, evaluation_type, 
+                                batch_id, section, semester, academic_year, submitted_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (
+            subject_code, 
+            subject_name, 
+            evaluation_type, 
+            batch.get('batchId', ''),
+            batch.get('section', ''),
+            batch.get('semester', ''),
+            batch.get('year', ''),
+            datetime.now().isoformat()
+        ))
+        
+        submission_id = cursor.lastrowid
+        
+        # Insert marks
+        for student in students:
+            usn = student.get('usn')
+            marks = student.get('marks', {})
+            
+            for question_id, mark in marks.items():
+                cursor.execute('''
+                INSERT INTO student_marks (submission_id, usn, question_id, marks)
+                VALUES (?, ?, ?, ?)
+                ''', (submission_id, usn, question_id, mark))
+        
+        # Insert course outcomes
+        for question_id, co_string in course_outcomes.items():
+            if co_string:  # Only insert if there's a CO defined
+                cursor.execute('''
+                INSERT INTO question_cos (submission_id, question_id, course_outcomes)
+                VALUES (?, ?, ?)
+                ''', (submission_id, question_id, co_string))
+        
+        conn.commit()
+        
+        # Generate Excel export if needed
+        try:
+            export_to_excel(submission_id, data)
+        except Exception as e:
+            print(f"Excel export failed: {e}")
+        
+        conn.close()
+        
         return jsonify({
-            'success': True,
-            'message': f'Marks submitted for {len(valid_students)} students',
-            'submission_id': submission.id
-        }), 201
-
+            "status": "success",
+            "message": "Marks submitted successfully",
+            "submission_id": submission_id
+        })
+        
     except Exception as e:
-        db.session.rollback()
-        app.logger.error("Submission error: %s", str(e), exc_info=True)
+        print(f"Error submitting marks: {e}")
         return jsonify({
-            'success': False,
-            'message': 'Internal server error',
-            'error': str(e) if app.debug else None
+            "status": "error",
+            "message": f"Failed to submit marks: {str(e)}"
         }), 500
 
-@app.route('/submissions', methods=['GET'])
-def get_submissions():
+def export_to_excel(submission_id, data):
+    """Export the marks to an Excel file"""
     try:
-        submissions = MarkSubmission.query.options(db.joinedload(MarkSubmission.batch)).all()
-        result = [{
-            'id': sub.id,
-            'subject': f"{sub.subject_code} - {sub.subject_name}",
-            'evaluation': sub.evaluation_type,
-            'batch': sub.batch.batch_id if sub.batch else None,
-            'section': sub.batch.section if sub.batch else None,
-            'date': sub.submission_date.isoformat(),
-            'student_count': len(sub.student_marks)
-        } for sub in submissions]
-        return jsonify({'success': True, 'submissions': result})
+        # Create a dataframe for student marks
+        marks_data = []
+        
+        subject_name = data.get('subjectName')
+        evaluation_type = data.get('evaluationType')
+        batch = data.get('batch')
+        students = data.get('students', [])
+        course_outcomes = data.get('courseOutcomes', {})
+        
+        for student in students:
+            usn = student.get('usn')
+            student_marks = student.get('marks', {})
+            
+            if not student_marks:  # Skip students with no marks
+                continue
+                
+            student_row = {'USN': usn}
+            
+            for question_id, mark in student_marks.items():
+                student_row[question_id] = mark
+                
+            marks_data.append(student_row)
+        
+        if not marks_data:  # No marks to export
+            return
+            
+        # Create the dataframe and export
+        df = pd.DataFrame(marks_data)
+        
+        # Add CO mapping as a separate sheet
+        co_data = [{'Question': q, 'Course Outcomes': co} for q, co in course_outcomes.items()]
+        co_df = pd.DataFrame(co_data)
+        
+        # Export to Excel
+        filename = f"marks_export.xlsx"
+        
+        with pd.ExcelWriter(filename) as writer:
+            df.to_excel(writer, sheet_name='Student Marks', index=False)
+            co_df.to_excel(writer, sheet_name='CO Mapping', index=False)
+            
+            # Add metadata sheet
+            metadata = pd.DataFrame([
+                {'Field': 'Subject', 'Value': subject_name},
+                {'Field': 'Evaluation', 'Value': evaluation_type},
+                {'Field': 'Batch', 'Value': batch.get('batchId')},
+                {'Field': 'Section', 'Value': batch.get('section')},
+                {'Field': 'Semester', 'Value': batch.get('semester')},
+                {'Field': 'Academic Year', 'Value': batch.get('year')},
+                {'Field': 'Export Date', 'Value': datetime.now().isoformat()}
+            ])
+            metadata.to_excel(writer, sheet_name='Metadata', index=False)
+        
+        print(f"Exported marks to {filename}")
+        
     except Exception as e:
-        app.logger.error("Error fetching submissions: %s", str(e))
-        return jsonify({'success': False, 'message': 'Error fetching submissions'}), 500
+        print(f"Failed to export marks: {e}")
+        raise
 
-@app.route('/reset-db', methods=['POST'])
-def reset_database():
-    if not app.debug:
-        return jsonify({'success': False, 'message': 'Not allowed in production'}), 403
-    try:
-        db.drop_all()
-        db.create_all()
-        return jsonify({'success': True, 'message': 'Database reset'})
-    except Exception as e:
-        return jsonify({'success': False, 'message': str(e)}), 500
-
-app.debug = True  # Enable debug mode
 if __name__ == '__main__':
-    os.makedirs(os.path.join(os.path.dirname(__file__), 'instance'), exist_ok=True)
-    app.run(host='0.0.0.0', port=5000)
+    app.run(debug=True)

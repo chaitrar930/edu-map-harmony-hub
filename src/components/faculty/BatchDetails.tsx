@@ -55,7 +55,7 @@ const sampleStudents: Student[] = Array(15)
   .map((_, i) => ({
     id: (i + 1).toString(),
     name: `Student ${i + 1}`,
-    usn: `1DS21AI${(i + 1).toString().padStart(3, "0")}`,
+    usn: `1DS23AI${(i + 1).toString().padStart(3, "0")}`,
   }));
 
 const BatchDetails = ({

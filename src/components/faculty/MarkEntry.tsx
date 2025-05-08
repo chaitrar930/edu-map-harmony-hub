@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { ChevronLeft, Wrench } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,10 @@ type MarkEntryProps = {
   onBack: () => void;
 };
 
+type QuestionCO = {
+  [questionId: string]: string;
+};
+
 const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedSubjectName, setSelectedSubjectName] = useState("");
@@ -49,6 +54,7 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   const [students, setStudents] = useState<Student[]>([]);
   const [isCIE, setIsCIE] = useState(true);
   const [isTesting, setIsTesting] = useState(false);
+  const [questionCOs, setQuestionCOs] = useState<QuestionCO>({});
 
   useEffect(() => {
     const subject = localStorage.getItem("selectedSubject") || "";
@@ -71,17 +77,25 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
       setSelectedSubjectName(subjectInfo.name);
     }
 
-    const sampleStudents = Array(15)
+    // Generate students up to 1DS23AI070
+    const sampleStudents = Array(70)
       .fill(null)
       .map((_, i) => ({
         id: (i + 1).toString(),
         name: `Student ${i + 1}`,
-        usn: `1DS21AI${(i + 1).toString().padStart(3, "0")}`,
+        usn: `1DS23AI${(i + 1).toString().padStart(3, "0")}`,
         marks: {},
       }));
 
     setStudents(sampleStudents);
   }, []);
+
+  const handleCOChange = (questionId: string, value: string) => {
+    setQuestionCOs(prev => ({
+      ...prev,
+      [questionId]: value
+    }));
+  };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -149,9 +163,10 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
       subjectName: selectedSubjectName,
       evaluationType,
       questionPaper,
+      courseOutcomes: questionCOs,
       batch: {
         ...batch,
-        id: batch.id || Date.now().toString(), // Ensure batch has an ID
+        id: batch.id || Date.now().toString(),
       },
       students: students.map(student => ({
         usn: student.usn,
@@ -186,69 +201,58 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
     }
   };
 
-  const renderTable = () => {
+  const generateQuestionHeaders = () => {
+    const questionsPerRow = 8;
+    const questions = [];
     const maxMarks = isCIE ? 5 : 10;
-    const total = isCIE ? 50 : 100;
+    
+    // Generate headers for questions 1-8, each with subquestions a, b, c, d
+    for (let i = 1; i <= questionsPerRow; i++) {
+      ['a', 'b', 'c', 'd'].forEach(subQ => {
+        questions.push(`Q${i}.${subQ}`);
+      });
+    }
+    
+    return questions.map((q) => (
+      <TableHead key={q} className="p-2 text-center">
+        <div className="mb-2">
+          <Input
+            placeholder="CO1,CO2"
+            value={questionCOs[q] || ""}
+            onChange={(e) => handleCOChange(q, e.target.value)}
+            className="w-full text-xs mb-1 h-6"
+          />
+          <div>{`${q} (${maxMarks})`}</div>
+        </div>
+      </TableHead>
+    ));
+  };
 
-    return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[150px]">USN</TableHead>
-            <TableHead>Name</TableHead>
-            {["1", "2", "3", "4", "5"].map((q) => (
-              <>
-                <TableHead key={`q${q}a`}>{`Q${q}.a (${maxMarks})`}</TableHead>
-                <TableHead key={`q${q}b`}>{`Q${q}.b (${maxMarks})`}</TableHead>
-              </>
-            ))}
-            <TableHead>Total ({total})</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {students.map((student) => (
-            <TableRow key={student.id}>
-              <TableCell className="font-medium">{student.usn}</TableCell>
-              <TableCell>{student.name}</TableCell>
-              {["1", "2", "3", "4", "5"].map((q) => (
-                <>
-                  <TableCell key={`q${q}a`}>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={maxMarks}
-                      value={student.marks[`q${q}a`] || ""}
-                      onChange={(e) =>
-                        handleMarkChange(student.id, `q${q}a`, e.target.value)
-                      }
-                      className="w-12 h-8"
-                    />
-                  </TableCell>
-                  <TableCell key={`q${q}b`}>
-                    <Input
-                      type="number"
-                      min="0"
-                      max={maxMarks}
-                      value={student.marks[`q${q}b`] || ""}
-                      onChange={(e) =>
-                        handleMarkChange(student.id, `q${q}b`, e.target.value)
-                      }
-                      className="w-12 h-8"
-                    />
-                  </TableCell>
-                </>
-              ))}
-              <TableCell className="font-medium">
-                {Object.values(student.marks).reduce(
-                  (sum, mark) => sum + (mark || 0),
-                  0
-                )}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    );
+  const renderTableCells = (student: Student) => {
+    const questionsPerRow = 8;
+    const cells = [];
+    const maxMarks = isCIE ? 5 : 10;
+    
+    // Generate cells for questions 1-8, each with subquestions a, b, c, d
+    for (let i = 1; i <= questionsPerRow; i++) {
+      ['a', 'b', 'c', 'd'].forEach(subQ => {
+        const questionId = `Q${i}${subQ}`;
+        cells.push(
+          <TableCell key={`${student.id}-${questionId}`} className="p-1">
+            <Input
+              type="number"
+              min="0"
+              max={maxMarks}
+              value={student.marks[questionId] || ""}
+              onChange={(e) => handleMarkChange(student.id, questionId, e.target.value)}
+              className="w-12 h-8"
+            />
+          </TableCell>
+        );
+      });
+    }
+    
+    return cells;
   };
 
   return (
@@ -260,7 +264,6 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
         </Button>
         <h2 className="text-xl font-bold">Mark Entry</h2>
         
-        {/* Test Connection Button */}
         <Button
           variant="ghost"
           size="sm"
@@ -288,7 +291,35 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
               onChange={handleFileUpload} 
             />
           </div>
-          {renderTable()}
+          
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[100px] sticky left-0 bg-white">USN</TableHead>
+                  <TableHead className="w-[120px] sticky left-[100px] bg-white">Name</TableHead>
+                  {generateQuestionHeaders()}
+                  <TableHead className="sticky right-0 bg-white">Total ({isCIE ? 50 : 100})</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {students.map((student) => (
+                  <TableRow key={student.id}>
+                    <TableCell className="font-medium sticky left-0 bg-white">{student.usn}</TableCell>
+                    <TableCell className="sticky left-[100px] bg-white">{student.name}</TableCell>
+                    {renderTableCells(student)}
+                    <TableCell className="font-medium sticky right-0 bg-white">
+                      {Object.values(student.marks).reduce(
+                        (sum, mark) => sum + (mark || 0),
+                        0
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          
           <div className="flex justify-end mt-4 space-x-2">
             <Button variant="outline" onClick={onBack}>
               Cancel
