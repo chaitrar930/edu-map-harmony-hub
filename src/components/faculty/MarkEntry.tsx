@@ -1,6 +1,6 @@
 
 import { useState, useEffect } from "react";
-import { ChevronLeft, FileSpreadsheet, Upload, ChartBar } from "lucide-react";
+import { ChevronLeft, FileSpreadsheet, Upload, ChartBar, Percent } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -11,6 +11,24 @@ import {
   CardDescription,
 } from "@/components/ui/card";
 import { toast } from "sonner";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer
+} from "recharts";
 
 type Batch = {
   id: string;
@@ -110,34 +128,209 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
     }
   };
 
+  const renderQuestionMetrics = () => {
+    if (!resultsData?.question_metrics) return null;
+
+    const questionMetrics = resultsData.question_metrics;
+    const questionIds = Object.keys(questionMetrics);
+
+    return (
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Question-level Metrics</CardTitle>
+          <CardDescription>Analysis of student performance by question</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Question</TableHead>
+                  <TableHead>Max Marks</TableHead>
+                  <TableHead>60% Threshold</TableHead>
+                  <TableHead>Students Attempted (A)</TableHead>
+                  <TableHead>Students Above 60% (B)</TableHead>
+                  <TableHead>CO Attainment (B/A %)</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {questionIds.map((questionId) => {
+                  const data = questionMetrics[questionId];
+                  return (
+                    <TableRow key={questionId}>
+                      <TableCell className="font-medium">{questionId}</TableCell>
+                      <TableCell>{data.max_mark}</TableCell>
+                      <TableCell>{data.threshold}</TableCell>
+                      <TableCell>{data.num_attempted}</TableCell>
+                      <TableCell>{data.num_above_threshold}</TableCell>
+                      <TableCell>{data.co_attainment}%</TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderCOAttainment = () => {
+    if (!resultsData?.co_data?.co_attainment) return null;
+
+    const coAttainment = resultsData.co_data.co_attainment;
+    const coAttainmentTheory = resultsData.co_data.co_attainment_theory || {};
+    const coAttainmentLab = resultsData.co_data.co_attainment_lab || {};
+    
+    // Prepare data for chart
+    const chartData = Object.keys(coAttainment).map(co => ({
+      name: `CO${co}`,
+      Overall: coAttainment[co],
+      Theory: coAttainmentTheory[co] || 0,
+      Lab: coAttainmentLab[co] || 0
+    }));
+
+    return (
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Course Outcome (CO) Attainment</CardTitle>
+          <CardDescription>Analysis of CO attainment percentages</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Legend />
+                  <Bar dataKey="Overall" fill="#8884d8" name="Overall" />
+                  <Bar dataKey="Theory" fill="#82ca9d" name="Theory" />
+                  <Bar dataKey="Lab" fill="#ffc658" name="Lab" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-3">CO Attainment Details</h4>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Course Outcome</TableHead>
+                    <TableHead>Overall</TableHead>
+                    <TableHead>Theory</TableHead>
+                    <TableHead>Lab</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.keys(coAttainment).map((co) => (
+                    <TableRow key={co}>
+                      <TableCell className="font-medium">CO{co}</TableCell>
+                      <TableCell>{coAttainment[co]}%</TableCell>
+                      <TableCell>{coAttainmentTheory[co] || 0}%</TableCell>
+                      <TableCell>{coAttainmentLab[co] || 0}%</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-muted/50">
+                    <TableCell className="font-bold">Average</TableCell>
+                    <TableCell className="font-bold">{resultsData.co_data.summary.average_attainment}%</TableCell>
+                    <TableCell className="font-bold">{resultsData.co_data.summary.average_theory || 0}%</TableCell>
+                    <TableCell className="font-bold">{resultsData.co_data.summary.average_lab || 0}%</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const renderPOAttainment = () => {
+    if (!resultsData?.po_data?.po_attainment) return null;
+
+    const poAttainment = resultsData.po_data.po_attainment;
+    const poAttainmentTheory = resultsData.po_data.po_attainment_theory || {};
+    const poAttainmentLab = resultsData.po_data.po_attainment_lab || {};
+    
+    // Prepare data for chart
+    const chartData = Object.keys(poAttainment).map(po => ({
+      name: po,
+      Overall: poAttainment[po],
+      Theory: poAttainmentTheory[po] || 0,
+      Lab: poAttainmentLab[po] || 0
+    }));
+
+    return (
+      <Card className="mt-4">
+        <CardHeader>
+          <CardTitle>Program Outcome (PO) Attainment</CardTitle>
+          <CardDescription>Analysis of PO attainment percentages</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip formatter={(value) => `${value}%`} />
+                  <Legend />
+                  <Bar dataKey="Overall" fill="#8884d8" name="Overall" />
+                  <Bar dataKey="Theory" fill="#82ca9d" name="Theory" />
+                  <Bar dataKey="Lab" fill="#ffc658" name="Lab" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            
+            <div>
+              <h4 className="text-sm font-medium mb-3">PO Attainment Details</h4>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Program Outcome</TableHead>
+                    <TableHead>Overall</TableHead>
+                    <TableHead>Theory</TableHead>
+                    <TableHead>Lab</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {Object.keys(poAttainment).map((po) => (
+                    <TableRow key={po}>
+                      <TableCell className="font-medium">{po}</TableCell>
+                      <TableCell>{poAttainment[po]}%</TableCell>
+                      <TableCell>{poAttainmentTheory[po] || 0}%</TableCell>
+                      <TableCell>{poAttainmentLab[po] || 0}%</TableCell>
+                    </TableRow>
+                  ))}
+                  <TableRow className="bg-muted/50">
+                    <TableCell className="font-bold">Average</TableCell>
+                    <TableCell className="font-bold">{resultsData.po_data.summary.average_attainment}%</TableCell>
+                    <TableCell className="font-bold">{resultsData.po_data.summary.average_theory || 0}%</TableCell>
+                    <TableCell className="font-bold">{resultsData.po_data.summary.average_lab || 0}%</TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   const renderResults = () => {
     if (!resultsData) return null;
 
     return (
       <div className="space-y-4 mt-6">
         <h3 className="text-lg font-medium">CO-PO Mapping Results</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Course Outcomes Analysis</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-500">
-                Visualization will appear here once implemented
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Student Performance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-gray-500">
-                Visualization will appear here once implemented
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        
+        {renderQuestionMetrics()}
+        {renderCOAttainment()}
+        {renderPOAttainment()}
       </div>
     );
   };
@@ -196,7 +389,7 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
               </div>
             </div>
 
-            {resultsData && renderResults()}
+            {renderResults()}
             
             <div className="flex justify-end space-x-2">
               <Button variant="outline" onClick={onBack}>
