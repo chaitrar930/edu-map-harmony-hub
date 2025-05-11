@@ -2,7 +2,6 @@
 from flask import Flask, request, jsonify
 import sqlite3
 import os
-import pandas as pd
 import numpy as np
 from datetime import datetime
 from flask_cors import CORS
@@ -10,6 +9,14 @@ import tempfile
 
 app = Flask(__name__)
 CORS(app)
+
+# Check and import required packages
+try:
+    import pandas as pd
+    import openpyxl
+except ImportError as e:
+    print(f"ERROR: Missing required dependency: {e}")
+    print("Please install required packages using: pip install -r requirements.txt")
 
 # Database setup
 DATABASE = 'copomapping.db'
@@ -43,6 +50,16 @@ def submit_marks():
 @app.route('/process-marks-file', methods=['POST'])
 def process_marks_file():
     try:
+        # Check for required packages
+        try:
+            import pandas as pd
+            import openpyxl
+        except ImportError as e:
+            return jsonify({
+                "status": "error", 
+                "message": f"Missing required dependency: {str(e)}. Use pip install -r requirements.txt to install required packages."
+            }), 500
+            
         # Check if file is present in request
         if 'file' not in request.files:
             return jsonify({"status": "error", "message": "No file uploaded"}), 400
