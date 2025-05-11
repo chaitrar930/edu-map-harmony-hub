@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronLeft, FileSpreadsheet, Upload, ChartBar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,20 @@ type MarkEntryProps = {
   onBack: () => void;
 };
 
+// Define the subject name getter function before it's used in the hook
+const getSubjectNameById = (id: string): string => {
+  const subjects = [
+    { id: "mat101", name: "Advanced Mathematics" },
+    { id: "cs201", name: "Data Structures and Algorithms" },
+    { id: "ai301", name: "Machine Learning" },
+    { id: "ds401", name: "Deep Learning" },
+    { id: "cs501", name: "Natural Language Processing" },
+  ];
+
+  const subject = subjects.find(s => s.id === id);
+  return subject ? subject.name : "";
+};
+
 const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   const [selectedSubject, setSelectedSubject] = useState("");
   const [selectedSubjectName, setSelectedSubjectName] = useState("");
@@ -34,7 +48,7 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   const [processingResults, setProcessingResults] = useState(false);
   const [resultsData, setResultsData] = useState<any | null>(null);
 
-  useState(() => {
+  useEffect(() => {
     // Load saved subject and evaluation type
     const subject = localStorage.getItem("selectedSubject") || "";
     const evaluation = localStorage.getItem("selectedEvaluation") || "";
@@ -43,20 +57,7 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
     setSelectedSubject(subject);
     setSelectedSubjectName(subjectName);
     setEvaluationType(evaluation);
-  });
-
-  const getSubjectNameById = (id: string): string => {
-    const subjects = [
-      { id: "mat101", name: "Advanced Mathematics" },
-      { id: "cs201", name: "Data Structures and Algorithms" },
-      { id: "ai301", name: "Machine Learning" },
-      { id: "ds401", name: "Deep Learning" },
-      { id: "cs501", name: "Natural Language Processing" },
-    ];
-
-    const subject = subjects.find(s => s.id === id);
-    return subject ? subject.name : "";
-  };
+  }, []); // Added proper dependency array for useEffect
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
