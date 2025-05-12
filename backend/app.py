@@ -148,7 +148,7 @@ def process_marks_file():
         co_data = calculate_co_attainment(data)
         
         # Calculate PO attainment metrics
-        po_data = calculate_po_attainment(data)
+        po_data = calculate_po_attainment(data, co_data)
         
         # Calculate additional metrics for each question
         question_metrics = calculate_question_metrics(data)
@@ -176,7 +176,7 @@ def process_marks_file():
         }), 500
 
 def process_excel_file(file_path):
-    """Process Excel file to extract marks and CO mappings"""
+    """Process Excel file to extract marks and CO mappings for the specific format shown in the images"""
     try:
         # Read the Excel file
         xl = pd.ExcelFile(file_path)
@@ -185,118 +185,385 @@ def process_excel_file(file_path):
         result = {
             'students': [],
             'marks': [],
-            'co_mappings': []
+            'co_mappings': [],
+            'max_marks': {}
         }
         
         # Get sheets
         sheet_names = xl.sheet_names
         
-        # Process theory sheet (first sheet)
         if len(sheet_names) > 0:
+            # Read the first sheet (main marks sheet)
             df = pd.read_excel(file_path, sheet_name=sheet_names[0])
             
-            # Extract COs mapped row
-            co_mapped = df.iloc[0].to_dict()
+            # Find the row with "COs mapped" - usually row 0
+            co_mapped_row = df.iloc[0]
             
-            # Extract maximum marks row
-            max_marks_row = df.iloc[2].to_dict()
-            
-            # Get USN and student names
-            students_data = df.iloc[3:].copy()
-            
-            # Process student marks
-            for _, row in students_data.iterrows():
-                usn = row.get('USN', '')
-                name = row.get('STUDENT NAME', '')
+            # Find the row with "Maximum Marks" - usually row 1 or 2
+            max_marks_row = None
+            for i in range(1, 5):  # Check first few rows
+                if 'Maximum Marks' in str(df.iloc[i].values):
+                    max_marks_row = df.iloc[i]
+                    break
                 
-                if not pd.isna(usn) and usn:
-                    # Add to students list
-                    result['students'].append({
-                        'usn': usn,
-                        'name': name
-                    })
-                    
-                    # Process each question's marks
-                    for col in df.columns:
-                        if col not in ['USN', 'STUDENT NAME', 'Final SEE MARKS']:
-                            # Only process if column has a valid question identifier
-                            if col.startswith('Q'):
-                                mark = row.get(col, 0)
-                                if not pd.isna(mark):
-                                    result['marks'].append({
-                                        'usn': usn,
-                                        'question_id': col,
-                                        'mark': float(mark)
-                                    })
+            if max_marks_row is None:
+                # Try to find by column header
+                max_marks_row = df[df.iloc[:, 0] == 'Maximum Marks'].iloc[0] if not df[df.iloc[:, 0] == 'Maximum Marks'].empty else None
             
-            # Process CO mappings
-            for col in df.columns:
-                if col.startswith('Q'):
-                    co_mapping = co_mapped.get(col, '')
-                    if not pd.isna(co_mapping) and co_mapping:
-                        result['co_mappings'].append({
-                            'question_id': col,
-                            'course_outcomes': str(co_mapping),
-                            'max_mark': float(max_marks_row.get(col, 0)) if not pd.isna(max_marks_row.get(col, 0)) else 0
+            if max_marks_row is None:
+                raise ValueError("Could not find Maximum Marks row in the Excel file")
+            
+            # Get the USN and student rows - they start after Maximum Marks row
+            student_data_start_idx = None
+            for i in range(5):
+                if 'USN' in str(df.iloc[i].values) and 'STUDENT NAME' in str(df.iloc[i].values):
+                    student_data_start_idx = i + 1
+                    break
+            
+            if student_data_start_idx is None:
+                # Find the first row with "USN" in the first column
+                usn_rows = df[df.iloc[:, 0] == 'USN']
+                if not usn_rows.empty:
+                    student_data_start_idx = usn_rows.index[0] + 1
+                else:
+                    raise ValueError("Could not find student data in the Excel file")
+            
+            # Column indices for USN and student names
+            usn_col_idx = None
+            name_col_idx = None
+            
+            # Find column indices
+            for i, col_name in enumerate(df.columns):
+                if 'USN' in str(col_name):
+                    usn_col_idx = i
+                if 'STUDENT NAME' in str(col_name):
+                    name_col_idx = i
+            
+            if usn_col_idx is None or name_col_idx is None:
+                raise ValueError("Could not find USN or STUDENT NAME columns")
+            
+            # Extract headers for question columns (Q1A, Q1B, etc.)
+            headers_row = df.iloc[student_data_start_idx - 1]
+            question_columns = []
+            
+            for idx, col_name in enumerate(headers_row):
+                # Skip USN and STUDENT NAME columns
+                if idx != usn_col_idx and idx != name_col_idx:
+                    # Check if column name starts with Q
+                    if isinstance(col_name, str) and col_name.startswith('Q'):
+                        question_columns.append({
+                            'index': idx,
+                            'name': col_name
                         })
-                        
-            # Process Lab sheet if available
-            if len(sheet_names) > 1:
-                lab_df = pd.read_excel(file_path, sheet_name=sheet_names[1])
+            
+            # Extract CO mappings for each question
+            co_mappings = {}
+            for question in question_columns:
+                q_name = question['name']
+                q_idx = question['index']
+                co_mapping = co_mapped_row.iloc[q_idx]
                 
-                # Similar processing for lab sheet
-                # For lab, we'll add a prefix to distinguish questions
-                lab_co_mapped = lab_df.iloc[0].to_dict()
-                lab_max_marks_row = lab_df.iloc[2].to_dict()
-                lab_students_data = lab_df.iloc[3:].copy()
-                
-                for _, row in lab_students_data.iterrows():
-                    usn = row.get('USN', '')
-                    name = row.get('STUDENT NAME', '')
+                # Only add if there's a valid CO mapping
+                if pd.notna(co_mapping) and str(co_mapping).strip():
+                    co_mappings[q_name] = str(co_mapping).strip()
                     
-                    if not pd.isna(usn) and usn:
-                        # Process each lab question's marks
-                        for col in lab_df.columns:
-                            if col not in ['USN', 'STUDENT NAME', 'Final LAB MARKS']:
-                                # Only process if column has a valid question identifier
-                                if col.startswith('Q'):
-                                    mark = row.get(col, 0)
-                                    if not pd.isna(mark):
-                                        result['marks'].append({
-                                            'usn': usn,
-                                            'question_id': f"LAB_{col}",
-                                            'mark': float(mark)
-                                        })
+                    # Also add max marks
+                    max_mark = max_marks_row.iloc[q_idx]
+                    if pd.notna(max_mark):
+                        result['max_marks'][q_name] = float(max_mark)
+                    else:
+                        result['max_marks'][q_name] = 0
+            
+            # Process student data
+            student_data = df.iloc[student_data_start_idx:]
+            
+            for _, row in student_data.iterrows():
+                usn = row.iloc[usn_col_idx]
+                name = row.iloc[name_col_idx] if name_col_idx is not None else ""
                 
-                # Process Lab CO mappings
-                for col in lab_df.columns:
-                    if col.startswith('Q'):
-                        co_mapping = lab_co_mapped.get(col, '')
-                        if not pd.isna(co_mapping) and co_mapping:
-                            result['co_mappings'].append({
-                                'question_id': f"LAB_{col}",
-                                'course_outcomes': str(co_mapping),
-                                'max_mark': float(lab_max_marks_row.get(col, 0)) if not pd.isna(lab_max_marks_row.get(col, 0)) else 0
-                            })
+                # Skip rows without USN
+                if pd.isna(usn) or not str(usn).strip():
+                    continue
+                
+                # Add student to list
+                result['students'].append({
+                    'usn': str(usn).strip(),
+                    'name': str(name).strip() if not pd.isna(name) else ""
+                })
+                
+                # Process marks for each question
+                for question in question_columns:
+                    q_name = question['name']
+                    q_idx = question['index']
+                    
+                    # Get mark for this question
+                    mark = row.iloc[q_idx]
+                    
+                    # Only add if the mark is a valid number
+                    if pd.notna(mark) and isinstance(mark, (int, float)):
+                        result['marks'].append({
+                            'usn': str(usn).strip(),
+                            'question_id': q_name,
+                            'mark': float(mark)
+                        })
+            
+            # Add CO mappings to the result
+            for q_name, co_mapping in co_mappings.items():
+                result['co_mappings'].append({
+                    'question_id': q_name,
+                    'course_outcomes': co_mapping,
+                    'max_mark': result['max_marks'].get(q_name, 0)
+                })
+                
+            # If there are more sheets (lab sheets), process them similarly
+            if len(sheet_names) > 1:
+                for sheet_idx in range(1, min(len(sheet_names), 3)):  # Process up to 2 additional sheets
+                    sheet_name = sheet_names[sheet_idx]
+                    
+                    # Add a prefix to differentiate lab questions
+                    prefix = f"LAB_{sheet_idx}_"
+                    
+                    # Same process for lab sheet
+                    lab_df = pd.read_excel(file_path, sheet_name=sheet_name)
+                    
+                    # Try to find CO mapped and max marks rows
+                    lab_co_mapped_row = lab_df.iloc[0]
+                    
+                    lab_max_marks_row = None
+                    for i in range(1, 5):
+                        if 'Maximum Marks' in str(lab_df.iloc[i].values):
+                            lab_max_marks_row = lab_df.iloc[i]
+                            break
+                    
+                    if lab_max_marks_row is None:
+                        lab_max_marks_row = lab_df[lab_df.iloc[:, 0] == 'Maximum Marks'].iloc[0] if not lab_df[lab_df.iloc[:, 0] == 'Maximum Marks'].empty else None
+                    
+                    if lab_max_marks_row is None:
+                        print(f"Warning: Could not find Maximum Marks row in sheet {sheet_name}")
+                        continue
+                    
+                    # Find student data rows
+                    lab_student_data_start_idx = None
+                    for i in range(5):
+                        if 'USN' in str(lab_df.iloc[i].values) and 'STUDENT NAME' in str(lab_df.iloc[i].values):
+                            lab_student_data_start_idx = i + 1
+                            break
+                    
+                    if lab_student_data_start_idx is None:
+                        lab_usn_rows = lab_df[lab_df.iloc[:, 0] == 'USN']
+                        if not lab_usn_rows.empty:
+                            lab_student_data_start_idx = lab_usn_rows.index[0] + 1
+                        else:
+                            print(f"Warning: Could not find student data in sheet {sheet_name}")
+                            continue
+                    
+                    # Find column indices
+                    lab_usn_col_idx = None
+                    lab_name_col_idx = None
+                    
+                    for i, col_name in enumerate(lab_df.columns):
+                        if 'USN' in str(col_name):
+                            lab_usn_col_idx = i
+                        if 'STUDENT NAME' in str(col_name):
+                            lab_name_col_idx = i
+                    
+                    if lab_usn_col_idx is None:
+                        print(f"Warning: Could not find USN column in sheet {sheet_name}")
+                        continue
+                    
+                    # Extract headers for question columns
+                    lab_headers_row = lab_df.iloc[lab_student_data_start_idx - 1]
+                    lab_question_columns = []
+                    
+                    for idx, col_name in enumerate(lab_headers_row):
+                        if idx != lab_usn_col_idx and idx != lab_name_col_idx:
+                            if isinstance(col_name, str) and col_name.startswith('Q'):
+                                lab_question_columns.append({
+                                    'index': idx,
+                                    'name': f"{prefix}{col_name}"  # Add prefix to differentiate lab questions
+                                })
+                    
+                    # Extract CO mappings for each question
+                    lab_co_mappings = {}
+                    for question in lab_question_columns:
+                        q_name = question['name']
+                        q_idx = question['index']
+                        co_mapping = lab_co_mapped_row.iloc[q_idx]
+                        
+                        if pd.notna(co_mapping) and str(co_mapping).strip():
+                            lab_co_mappings[q_name] = str(co_mapping).strip()
+                            
+                            # Also add max marks
+                            max_mark = lab_max_marks_row.iloc[q_idx]
+                            if pd.notna(max_mark):
+                                result['max_marks'][q_name] = float(max_mark)
+                            else:
+                                result['max_marks'][q_name] = 0
+                    
+                    # Process student data
+                    lab_student_data = lab_df.iloc[lab_student_data_start_idx:]
+                    
+                    for _, row in lab_student_data.iterrows():
+                        usn = row.iloc[lab_usn_col_idx]
+                        
+                        # Skip rows without USN
+                        if pd.isna(usn) or not str(usn).strip():
+                            continue
+                        
+                        # Process marks for each question
+                        for question in lab_question_columns:
+                            q_name = question['name']
+                            q_idx = question['index']
+                            
+                            # Get mark for this question
+                            mark = row.iloc[q_idx]
+                            
+                            # Only add if the mark is a valid number
+                            if pd.notna(mark) and isinstance(mark, (int, float)):
+                                result['marks'].append({
+                                    'usn': str(usn).strip(),
+                                    'question_id': q_name,
+                                    'mark': float(mark)
+                                })
+                    
+                    # Add CO mappings to the result
+                    for q_name, co_mapping in lab_co_mappings.items():
+                        result['co_mappings'].append({
+                            'question_id': q_name,
+                            'course_outcomes': co_mapping,
+                            'max_mark': result['max_marks'].get(q_name, 0)
+                        })
         
         return result
     
     except Exception as e:
         print(f"Error processing Excel file: {e}")
-        raise
+        raise ValueError(f"Failed to process Excel file: {str(e)}")
 
 def process_csv_file(file_path):
     """Process CSV file to extract marks and CO mappings"""
-    # ... keep existing code (CSV processing function)
-    pass
+    try:
+        # Similar approach to Excel, but with CSV
+        df = pd.read_csv(file_path)
+        
+        # Initialize result
+        result = {
+            'students': [],
+            'marks': [],
+            'co_mappings': [],
+            'max_marks': {}
+        }
+        
+        # Find the row with "COs mapped"
+        co_mapped_row_idx = None
+        max_marks_row_idx = None
+        student_data_start_idx = None
+        
+        for i in range(min(10, len(df))):
+            if 'COs mapped' in str(df.iloc[i].values):
+                co_mapped_row_idx = i
+            if 'Maximum Marks' in str(df.iloc[i].values):
+                max_marks_row_idx = i
+            if 'USN' in str(df.iloc[i].values) and 'STUDENT NAME' in str(df.iloc[i].values):
+                student_data_start_idx = i + 1
+        
+        if co_mapped_row_idx is None or max_marks_row_idx is None or student_data_start_idx is None:
+            raise ValueError("Could not find required header rows in CSV file")
+        
+        co_mapped_row = df.iloc[co_mapped_row_idx]
+        max_marks_row = df.iloc[max_marks_row_idx]
+        
+        # Find column indices
+        usn_col_idx = None
+        name_col_idx = None
+        
+        for i, col_name in enumerate(df.columns):
+            if 'USN' in str(col_name):
+                usn_col_idx = i
+            if 'STUDENT NAME' in str(col_name):
+                name_col_idx = i
+        
+        if usn_col_idx is None or name_col_idx is None:
+            raise ValueError("Could not find USN or STUDENT NAME columns")
+        
+        # Extract headers for question columns
+        headers_row = df.iloc[student_data_start_idx - 1]
+        question_columns = []
+        
+        for idx, col_name in enumerate(headers_row):
+            if idx != usn_col_idx and idx != name_col_idx:
+                if isinstance(col_name, str) and col_name.startswith('Q'):
+                    question_columns.append({
+                        'index': idx,
+                        'name': col_name
+                    })
+        
+        # Extract CO mappings for each question
+        co_mappings = {}
+        for question in question_columns:
+            q_name = question['name']
+            q_idx = question['index']
+            co_mapping = co_mapped_row.iloc[q_idx]
+            
+            if pd.notna(co_mapping) and str(co_mapping).strip():
+                co_mappings[q_name] = str(co_mapping).strip()
+                
+                # Also add max marks
+                max_mark = max_marks_row.iloc[q_idx]
+                if pd.notna(max_mark):
+                    result['max_marks'][q_name] = float(max_mark)
+                else:
+                    result['max_marks'][q_name] = 0
+        
+        # Process student data
+        student_data = df.iloc[student_data_start_idx:]
+        
+        for _, row in student_data.iterrows():
+            usn = row.iloc[usn_col_idx]
+            name = row.iloc[name_col_idx] if name_col_idx is not None else ""
+            
+            # Skip rows without USN
+            if pd.isna(usn) or not str(usn).strip():
+                continue
+            
+            # Add student to list
+            result['students'].append({
+                'usn': str(usn).strip(),
+                'name': str(name).strip() if not pd.isna(name) else ""
+            })
+            
+            # Process marks for each question
+            for question in question_columns:
+                q_name = question['name']
+                q_idx = question['index']
+                
+                # Get mark for this question
+                mark = row.iloc[q_idx]
+                
+                # Only add if the mark is a valid number
+                if pd.notna(mark) and isinstance(mark, (int, float)):
+                    result['marks'].append({
+                        'usn': str(usn).strip(),
+                        'question_id': q_name,
+                        'mark': float(mark)
+                    })
+        
+        # Add CO mappings to the result
+        for q_name, co_mapping in co_mappings.items():
+            result['co_mappings'].append({
+                'question_id': q_name,
+                'course_outcomes': co_mapping,
+                'max_mark': result['max_marks'].get(q_name, 0)
+            })
+                
+        return result
+    
+    except Exception as e:
+        print(f"Error processing CSV file: {e}")
+        raise ValueError(f"Failed to process CSV file: {str(e)}")
 
 def calculate_question_metrics(data):
-    """Calculate metrics for each question based on the requirements:
-    1. 60% of max marks
-    2. Number of students who attempted the question
-    3. Number of students who scored > 60% of max marks
-    4. CO attainment (B/A) for each question
-    """
+    """Calculate metrics for each question"""
     result = {}
     
     # Group marks by question
@@ -406,7 +673,7 @@ def calculate_co_attainment(data):
                         total_possible += total_students
                         
                         # Separate theory and lab attainment
-                        if question_id.startswith('LAB_'):
+                        if "LAB_" in question_id:
                             total_lab_marks += above_threshold
                             total_lab_possible += total_students
                         else:
@@ -446,24 +713,29 @@ def calculate_co_attainment(data):
         print(f"Error calculating CO attainment: {e}")
         return {}
 
-def calculate_po_attainment(data):
+def calculate_po_attainment(data, co_data):
     """Calculate PO attainment based on CO-PO mapping"""
     try:
-        # This is a simplified example, in a real implementation, 
-        # the CO-PO mapping would be stored in the database or provided as part of the input
-        co_po_mapping = {
-            '1': ['PO1', 'PO2'],
-            '2': ['PO1', 'PO3', 'PO4'],
-            '3': ['PO2', 'PO5'],
-            '4': ['PO3', 'PO6'],
-            '5': ['PO4', 'PO5', 'PO7']
-        }
-        
-        # Get CO attainment data
-        co_data = calculate_co_attainment(data)
+        # Get CO attainment data from previous calculation
         co_attainment = co_data.get('co_attainment', {})
         co_attainment_theory = co_data.get('co_attainment_theory', {})
         co_attainment_lab = co_data.get('co_attainment_lab', {})
+        
+        # Check if there's a CO-PO mapping in the data, otherwise use default
+        co_po_mapping = {}
+        
+        # Try to extract CO-PO mapping from data if available
+        # If not, use a default mapping
+        if not co_po_mapping:
+            co_po_mapping = {
+                '0': ['PO1', 'PO5', 'PO8', 'PO9', 'PO10', 'PO12'],
+                '1': ['PO1', 'PO5', 'PO9', 'PO10', 'PO12'],
+                '2': ['PO1', 'PO5', 'PO9', 'PO10', 'PO12'],
+                '3': ['PO1', 'PO5', 'PO8', 'PO9', 'PO10', 'PO12'],
+                '4': ['PO1', 'PO5', 'PO9', 'PO10', 'PO12'],
+                '5': ['PO1', 'PO5', 'PO9', 'PO10', 'PO12'],
+                '6': ['PO1', 'PO5', 'PO8', 'PO9', 'PO10', 'PO12']
+            }
         
         # Calculate PO attainment
         po_attainment = {}
@@ -513,11 +785,6 @@ def calculate_po_attainment(data):
     except Exception as e:
         print(f"Error calculating PO attainment: {e}")
         return {}
-
-def export_to_excel(submission_id, data):
-    """Export the marks to an Excel file"""
-    # ... keep existing code (export to excel function)
-    pass
 
 if __name__ == '__main__':
     app.run(debug=True)
