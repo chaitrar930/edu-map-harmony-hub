@@ -6,3 +6,4 @@ numpy==1.24.3
 pandas==2.0.1
 gunicorn==20.1.0
 matplotlib==3.7.1
+xlrd==2.0.1
