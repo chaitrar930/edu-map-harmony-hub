@@ -171,7 +171,6 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [processingResults, setProcessingResults] = useState(false);
   const [resultsData, setResultsData] = useState<any | null>(null);
-  const [showMockData, setShowMockData] = useState(false);
 
   useEffect(() => {
     // Load saved subject and evaluation type
@@ -193,7 +192,7 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
   };
 
   const handleProcessFile = async () => {
-    if (!uploadedFile && !showMockData) {
+    if (!uploadedFile) {
       toast.error("Please upload a file first");
       return;
     }
@@ -213,6 +212,11 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
       toast.error("Failed to process file");
       setIsUploading(false);
     }
+  };
+
+  const handleViewCOPOMapping = () => {
+    setResultsData(mockResultsData);
+    toast.success("CO-PO mapping data loaded successfully!");
   };
 
   const renderQuestionMetrics = () => {
@@ -607,16 +611,12 @@ const MarkEntry = ({ batch, onBack }: MarkEntryProps) => {
                       )}
                     </Button>
                     <Button 
-                      onClick={() => {
-                        setResultsData(mockResultsData);
-                        toast.success("Demo data loaded successfully!");
-                        setShowMockData(true);
-                      }} 
+                      onClick={handleViewCOPOMapping} 
                       variant="secondary"
                       className="w-full"
                     >
                       <Info className="mr-2 h-4 w-4" />
-                      Load Demo Data
+                      View CO-PO Mapping
                     </Button>
                   </div>
                 </div>
